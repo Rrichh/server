@@ -14,6 +14,7 @@ import { authRoutes } from './routes/auth.js';
 import { adminRoutes } from './routes/admin.js';
 import { userRoutes } from './routes/user.js';
 import { syncRoutes } from './routes/sync.js';
+import { coachRoutes } from './routes/coach.js';
 import { log, recordRequest } from './lib/observability.js';
 
 const app = new Hono();
@@ -156,6 +157,7 @@ api.route('/auth', authRoutes);
 api.route('/admin', adminRoutes);
 api.route('/user', userRoutes);
 api.route('/sync', syncRoutes);
+api.route('/coach', coachRoutes);
 
 app.route('/api', api);
 
