@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+drizzle/.pg-cache/
+
+# SQLite database files (locali, non vanno in repo)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

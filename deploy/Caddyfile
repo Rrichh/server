@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════════
+# Caddy — HTTPS automatico (Let's Encrypt) + sito statico + API proxy
+# {$DOMAIN} viene dalla variabile DOMAIN nel file .env
+# ═══════════════════════════════════════════════════════════════════
+{$DOMAIN} {
+	# ── API: proxy verso il container Node ──
+	handle /api/* {
+		reverse_proxy api:3000 {
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# ── Sito statico (index.html) ──
+	handle {
+		root * /srv/site
+		try_files {path} /index.html
+		file_server
+	}
+
+	# ── Security headers per il sito ──
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+		# CSP: whitelist precisa delle risorse che l'app usa davvero.
+		# 'unsafe-inline' necessario: l'app è una single-page con script/style inline.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://rsms.me; font-src 'self' https://fonts.gstatic.com https://rsms.me data:; img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://cdnjs.cloudflare.com; connect-src 'self' https://www.strava.com https://script.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+		-Server
+	}
+
+	# ── Compressione ──
+	encode zstd gzip
+
+	# ── Log ──
+	log {
+		output file /data/access.log {
+			roll_size 50mb
+			roll_keep 5
+		}
+	}
+}
+
+# Redirect www → apex
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}

@@ -1,0 +1,42 @@
+# ─── WattLab API — deploy gratuito su Render (test) ───
+# Crea automaticamente: il server (Docker) + un database Postgres.
+# I segreti JWT vengono generati da Render; gli altri valori sono qui sotto.
+services:
+  - type: web
+    name: wattlab-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wattlab-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: piana.richh@gmail.com
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: "None"
+      - key: CORS_ORIGIN
+        value: "https://rrichh.github.io"
+      - key: JWT_ACCESS_TTL
+        value: "15m"
+      - key: JWT_REFRESH_TTL
+        value: "30d"
+      # Email (Brevo) — da compilare quando attivi le mail:
+      # - key: BREVO_API_KEY
+      #   sync: false
+      # - key: SENDER_EMAIL
+      #   sync: false
+
+databases:
+  - name: wattlab-db
+    plan: free

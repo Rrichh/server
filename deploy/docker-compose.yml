@@ -1,0 +1,112 @@
+# ═══════════════════════════════════════════════════════════════════
+# WattLab — stack production hardened
+#   caddy    → HTTPS automatico (Let's Encrypt), sito statico, proxy /api
+#   api      → Node/Hono backend (non-root, capabilities drop, read-only)
+#   postgres → database con volume persistente (rete interna only)
+# ═══════════════════════════════════════════════════════════════════
+name: wattlab
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./site:/srv/site:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN=${DOMAIN}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [web]
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://wattlab:${POSTGRES_PASSWORD}@postgres:5432/wattlab
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - JWT_ACCESS_TTL=15m
+      - JWT_REFRESH_TTL=30d
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - COOKIE_SECURE=true
+      - COOKIE_DOMAIN=
+      - CORS_ORIGIN=
+      # Email recupero password + verifica (Brevo)
+      - BREVO_API_KEY=${BREVO_API_KEY}
+      - SENDER_EMAIL=${SENDER_EMAIL}
+      - SENDER_NAME=WattLab
+      - APP_URL=https://${DOMAIN}
+      - REQUIRE_EMAIL_VERIFICATION=${REQUIRE_EMAIL_VERIFICATION:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [web, db]
+    # ── Hardening ──
+    security_opt:
+      - no-new-privileges:true     # niente escalation privilegi (setuid ecc.)
+    cap_drop:
+      - ALL                        # zero capabilities Linux
+    read_only: true                # filesystem del container immutabile
+    tmpfs:
+      - /tmp:size=64M              # /tmp scrivibile in RAM (npm/tsx cache)
+      - /app/node_modules/.cache:size=32M
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=wattlab
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=wattlab
+      # scram-sha-256: auth password moderna (default pg16, esplicitato)
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wattlab -d wattlab"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [db]      # SOLO rete interna: irraggiungibile da internet
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  web:
+  db:
+    internal: true      # la rete db non ha uscita verso internet
