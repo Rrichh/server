@@ -273,7 +273,13 @@ authRoutes.post('/logout', async (c) => {
 
 // ═══ GET /auth/me ════════════════════════════════════════════
 authRoutes.get('/me', async (c) => {
-  const access = getCookie(c, 'wl_access');
+  // Cookie (same-origin) OPPURE header Authorization: Bearer (client cross-dominio,
+  // es. app GitHub Pages → server Render, dove i cookie di terze parti sono bloccati).
+  let access = getCookie(c, 'wl_access');
+  if (!access) {
+    const auth = c.req.header('Authorization');
+    if (auth?.startsWith('Bearer ')) access = auth.slice(7);
+  }
   if (!access) return c.json({ error: 'unauthorized' }, 401);
   const { verifyAccessToken } = await import('../lib/auth.js');
   const payload = verifyAccessToken(access);
