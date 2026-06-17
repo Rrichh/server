@@ -104,6 +104,10 @@ async function issueTokens(c: any, user: { id: string; email: string; premium: b
     expiresAt: refreshExpiresAt(),
   });
   setAuthCookies(c, access, refresh);
+  // Restituiti anche nel body: i client cross-dominio (app GitHub Pages →
+  // server Render) usano l'header Authorization perché i cookie di terze
+  // parti sono bloccati da molti browser (Safari/iOS, Chrome recenti).
+  return { access, refresh };
 }
 
 // ═══ POST /auth/register ═════════════════════════════════════
@@ -139,9 +143,9 @@ authRoutes.post('/register', zValidator('json', registerSchema), async (c) => {
     } catch { /* ignora */ }
   }
 
-  await issueTokens(c, user);
+  const tokens = await issueTokens(c, user);
   await logSecurityEvent(c, 'auth.register', user.id);
-  return c.json({ id: user.id, email: user.email, premium: user.premium, emailVerified: false }, 201);
+  return c.json({ id: user.id, email: user.email, premium: user.premium, emailVerified: false, accessToken: tokens.access, refreshToken: tokens.refresh }, 201);
 });
 
 // ═══ POST /auth/login ════════════════════════════════════════
@@ -194,14 +198,18 @@ authRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
     .set({ lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null })
     .where(eq(users.id, user.id));
 
-  await issueTokens(c, user);
+  const tokens = await issueTokens(c, user);
   await logSecurityEvent(c, 'auth.login', user.id);
-  return c.json({ id: user.id, email: user.email, premium: user.premium, emailVerified: user.emailVerified });
+  return c.json({ id: user.id, email: user.email, premium: user.premium, emailVerified: user.emailVerified, accessToken: tokens.access, refreshToken: tokens.refresh });
 });
 
 // ═══ POST /auth/refresh ══════════════════════════════════════
 authRoutes.post('/refresh', async (c) => {
-  const refresh = getCookie(c, 'wl_refresh');
+  // Cookie (browser same-origin) oppure body { refreshToken } (client cross-dominio)
+  let refresh = getCookie(c, 'wl_refresh');
+  if (!refresh) {
+    try { const body = await c.req.json(); if (body && typeof body.refreshToken === 'string') refresh = body.refreshToken; } catch { /* niente body */ }
+  }
   if (!refresh) return c.json({ error: 'no_refresh' }, 401);
   const refreshHash = hashRefreshToken(refresh);
 
@@ -245,8 +253,8 @@ authRoutes.post('/refresh', async (c) => {
 
   // Rotation: revoca il corrente, emetti nuovo
   await db.update(refreshTokens).set({ revokedAt: new Date() }).where(eq(refreshTokens.id, row.id));
-  await issueTokens(c, row.user);
-  return c.json({ id: row.user.id, email: row.user.email, premium: row.user.premium });
+  const tokens = await issueTokens(c, row.user);
+  return c.json({ id: row.user.id, email: row.user.email, premium: row.user.premium, accessToken: tokens.access, refreshToken: tokens.refresh });
 });
 
 // ═══ POST /auth/logout ═══════════════════════════════════════
